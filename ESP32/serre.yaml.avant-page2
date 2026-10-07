@@ -14,9 +14,6 @@ substitutions:
   # base jusqu'à 100 % sur cette plage (en °C et en points d'humidité).
   rampe_temp: "3.0"
   rampe_hum: "10.0"
-  # Sous vpd_min, le ventilateur atteint 100 % quand le VPD est plus bas
-  # que vpd_min de cette valeur (kPa).
-  rampe_vpd: "0.3"
   # Vitesse de secours si le capteur ne répond plus (%).
   vitesse_secours: "50.0"
   # Les plages de température et d'humidité sont dans plages.yaml.
@@ -106,7 +103,6 @@ sensor:
   - platform: copy
     source_id: temperature
     name: Température moyenne 24h
-    id: temp_moy_24h
     filters:
       - throttle_average: 15min
       - sliding_window_moving_average:
@@ -131,7 +127,6 @@ sensor:
   - platform: copy
     source_id: humidite
     name: Humidité moyenne 24h
-    id: hum_moy_24h
     filters:
       - throttle_average: 15min
       - sliding_window_moving_average:
@@ -152,58 +147,6 @@ sensor:
       - throttle_average: 15min
       - max:
           window_size: 96
-          send_every: 1
-
-  # --- VPD : déficit de pression de vapeur ------------------------------
-  # Écart entre la vapeur d'eau que l'air pourrait contenir et celle qu'il
-  # contient. Faible = air saturé (moisissure), élevé = air sec (plantes stressées).
-  - platform: template
-    name: VPD
-    id: vpd
-    icon: mdi:leaf
-    unit_of_measurement: kPa
-    accuracy_decimals: 2
-    update_interval: 15s
-    lambda: |-
-      const float t = id(temperature).state;
-      const float h = id(humidite).state;
-      if (isnan(t) || isnan(h)) return NAN;
-      const float pression_saturante = 0.6108f * expf(17.27f * t / (t + 237.3f));
-      return pression_saturante * (1.0f - h / 100.0f);
-  - platform: copy
-    source_id: vpd
-    name: VPD moyen 24h
-    id: vpd_moy_24h
-    filters:
-      - throttle_average: 15min
-      - sliding_window_moving_average:
-          window_size: 96
-          send_every: 1
-
-  # --- Valeurs lissées sur 5 min, utilisées pour les tendances ------------
-  - platform: copy
-    source_id: temperature
-    id: temp_lissee
-    internal: true
-    filters:
-      - sliding_window_moving_average:
-          window_size: 20
-          send_every: 1
-  - platform: copy
-    source_id: humidite
-    id: hum_lissee
-    internal: true
-    filters:
-      - sliding_window_moving_average:
-          window_size: 20
-          send_every: 1
-  - platform: copy
-    source_id: vpd
-    id: vpd_lisse
-    internal: true
-    filters:
-      - sliding_window_moving_average:
-          window_size: 20
           send_every: 1
 
   - platform: template
@@ -373,42 +316,6 @@ binary_sensor:
 
 text_sensor:
   - platform: template
-    name: Tendance température
-    icon: mdi:trending-up
-    update_interval: 60s
-    lambda: |-
-      switch (id(tendance_t)) {
-        case 1: return {"Hausse"};
-        case -1: return {"Baisse"};
-        case 0: return {"Stable"};
-        default: return {"Calcul en cours"};
-      }
-
-  - platform: template
-    name: Tendance humidité
-    icon: mdi:trending-up
-    update_interval: 60s
-    lambda: |-
-      switch (id(tendance_h)) {
-        case 1: return {"Hausse"};
-        case -1: return {"Baisse"};
-        case 0: return {"Stable"};
-        default: return {"Calcul en cours"};
-      }
-
-  - platform: template
-    name: Tendance VPD
-    icon: mdi:trending-up
-    update_interval: 60s
-    lambda: |-
-      switch (id(tendance_v)) {
-        case 1: return {"Hausse"};
-        case -1: return {"Baisse"};
-        case 0: return {"Stable"};
-        default: return {"Calcul en cours"};
-      }
-
-  - platform: template
     name: État température
     icon: mdi:thermometer
     update_interval: 15s
@@ -434,16 +341,6 @@ text_sensor:
 #  Régulation
 # -----------------------------------------------------------------------------
 globals:
-  # Tendances : 1 hausse, -1 baisse, 0 stable, 2 pas encore assez de mesures
-  - id: tendance_t
-    type: int
-    initial_value: "2"
-  - id: tendance_h
-    type: int
-    initial_value: "2"
-  - id: tendance_v
-    type: int
-    initial_value: "2"
   - id: vitesse_actuelle        # vitesse appliquée, en %
     type: float
     initial_value: "0"
@@ -455,28 +352,6 @@ globals:
     initial_value: "0"
 
 interval:
-  # Toutes les 5 min : compare la valeur lissée à celle d'il y a 30 min.
-  - interval: 5min
-    then:
-      - lambda: |-
-          static float ht[7], hh[7], hv[7];
-          static int n = 0;
-          for (int i = 0; i < 6; i++) { ht[i] = ht[i + 1]; hh[i] = hh[i + 1]; hv[i] = hv[i + 1]; }
-          ht[6] = id(temp_lissee).state;
-          hh[6] = id(hum_lissee).state;
-          hv[6] = id(vpd_lisse).state;
-          if (n < 7) n++;
-          auto calcul = [&](const float *a, float seuil) -> int {
-            if (n < 7 || isnan(a[0]) || isnan(a[6])) return 2;
-            const float ecart = a[6] - a[0];
-            if (ecart > seuil) return 1;
-            if (ecart < -seuil) return -1;
-            return 0;
-          };
-          id(tendance_t) = calcul(ht, ${tendance_temp});
-          id(tendance_h) = calcul(hh, ${tendance_hum});
-          id(tendance_v) = calcul(hv, ${tendance_vpd});
-
   # Toutes les minutes : planification du renouvellement d'air.
   - interval: 1min
     then:
@@ -529,11 +404,7 @@ script:
             // Montée progressive au-dessus des seuils.
             const float dt = (t - ${temp_max}) / ${rampe_temp};
             const float dh = (h - ${hum_max}) / ${rampe_hum};
-            // VPD trop bas (air saturé) : on fait entrer l'air plus sec de la pièce.
-            // Pas d'action si le VPD est trop haut : ventiler assècherait encore.
-            const float vp = id(vpd).state;
-            const float dv = isnan(vp) ? 0.0f : (${vpd_min} - vp) / ${rampe_vpd};
-            const float exces = std::max(dt, std::max(dh, dv));
+            const float exces = std::max(dt, dh);
             if (exces > 0) v = base + (100.0f - base) * std::min(1.0f, exces);
             if (id(renouv_restant) > 0) v = 100.0f;
           }
@@ -543,11 +414,10 @@ script:
           id(fan_pwm).set_level(v / 100.0f);
 
 # -----------------------------------------------------------------------------
-#  Écran OLED 1,3" (contrôleur SH1106, 128x64), deux pages qui alternent toutes les 15 s
-#   Page 1 : température, humidité, VPD, ventilateur | états et mode
-#   Page 2 : moyennes sur 24 h et tendances sur 30 min (température, humidité, VPD)
-#   Alerte critique : reste sur la page 1, la colonne droite clignote avec ⚠
-#   Veille : écran noir pendant les heures définies dans plages.yaml
+#  Écran OLED 1,3" (contrôleur SH1106, 128x64)
+#   Colonne gauche : température, humidité, ventilateur (icône animée + %)
+#   Colonne droite : état de la température, de l'humidité, mode du ventilateur
+#   Valeur critique dépassée : la colonne droite clignote avec un panneau ⚠
 # -----------------------------------------------------------------------------
 font:
   - file: "polices\\Roboto-Medium.ttf"   # police locale, pas besoin d'Internet
@@ -570,104 +440,35 @@ display:
       const float t = id(temperature).state;
       const float h = id(humidite).state;
       const float v = id(vitesse_actuelle);
-      const bool critique = id(alerte_critique).state;
 
-      // ---------------- Veille de nuit ----------------
-      auto maintenant = id(horloge).now();
-      if (maintenant.is_valid() && !critique) {
-        const float heure = maintenant.hour + maintenant.minute / 60.0f;
-        const float debut = ${ecran_veille_debut}, fin = ${ecran_veille_fin};
-        const bool veille = (debut <= fin) ? (heure >= debut && heure < fin)
-                                           : (heure >= debut || heure < fin);
-        if (veille) return;   // rien n'est dessiné : écran noir
-      }
-
-      // ---------------- Icônes (environ 9 x 15 pixels) ----------------
-      auto icone_thermometre = [&](int x, int y) {
-        it.rectangle(x + 2, y, 5, 11);
-        it.filled_circle(x + 4, y + 12, 3);
-        it.line(x + 4, y + 4, x + 4, y + 11);
-      };
-      auto icone_goutte = [&](int x, int y) {
-        it.filled_triangle(x + 4, y + 1, x, y + 9, x + 8, y + 9);
-        it.filled_circle(x + 4, y + 10, 4);
-      };
-      auto icone_feuille = [&](int x, int y) {
-        it.filled_triangle(x + 4, y, x, y + 6, x + 8, y + 6);
-        it.filled_triangle(x, y + 6, x + 8, y + 6, x + 4, y + 12);
-        it.line(x + 4, y + 2, x + 4, y + 11, COLOR_OFF);   // nervure
-        it.line(x + 4, y + 12, x + 4, y + 15);              // tige
-      };
-      auto fleche = [&](int x, int y, int sens) {        // sens : 1 hausse, -1 baisse, 0 stable
-        if (sens > 0)      it.filled_triangle(x + 4, y, x, y + 8, x + 8, y + 8);
-        else if (sens < 0) it.filled_triangle(x, y, x + 8, y, x + 4, y + 8);
-        else {
-          it.line(x, y + 4, x + 5, y + 4);
-          it.filled_triangle(x + 5, y + 1, x + 5, y + 7, x + 8, y + 4);
-        }
-      };
-
-      // ---------------- Page 2 (une fois sur deux, toutes les 15 s) ----------------
-      const bool page2 = !critique && (millis() / 15000) % 2 == 1;
-      if (page2) {
-        it.print(0, 0, id(police_petite), "Moy. 24 h");
-        it.print(127, 0, id(police_petite), TextAlign::TOP_RIGHT, "Tendance");
-        it.line(0, 13, 127, 13);
-
-        auto ligne = [&](int y, float moyenne, const char *format, int tendance) {
-          if (isnan(moyenne)) it.print(13, y, id(police_moyenne), "--");
-          else                it.printf(13, y, id(police_moyenne), format, moyenne);
-          if (tendance == 2) {                       // pas encore 30 min de mesures
-            it.print(86, y + 1, id(police_petite), "...");
-            return;
-          }
-          fleche(74, y + 3, tendance);
-          it.print(86, y + 1, id(police_petite),
-                   tendance > 0 ? "hausse" : (tendance < 0 ? "baisse" : "stable"));
-        };
-
-        icone_thermometre(0, 16);
-        ligne(16, id(temp_moy_24h).state, "%.1f°", id(tendance_t));
-        icone_goutte(0, 32);
-        ligne(32, id(hum_moy_24h).state, "%.0f %%", id(tendance_h));
-        icone_feuille(0, 48);
-        ligne(48, id(vpd_moy_24h).state, "%.2f kPa", id(tendance_v));
-        return;
-      }
-
-      // ---------------- Page 1 : colonne gauche (4 lignes de 16 px) ----------------
-      const float vp = id(vpd).state;
+      // ---------------- Colonne gauche ----------------
       if (isnan(t) || isnan(h)) {
         it.print(0, 0, id(police_moyenne), "Capteur");
-        it.print(0, 16, id(police_moyenne), "absent");
+        it.print(0, 18, id(police_moyenne), "absent");
       } else {
-        icone_thermometre(0, 0);
-        it.printf(13, 1, id(police_moyenne), "%.1f°C", t);
-        icone_goutte(0, 16);
-        it.printf(13, 17, id(police_moyenne), "%.0f %%", h);
-        icone_feuille(0, 32);
-        it.printf(13, 33, id(police_moyenne), "%.2f", vp);
-        it.print(47, 35, id(police_petite), "kPa");
+        it.printf(0, 0, id(police_grande), "%.1f°C", t);
+        it.printf(0, 21, id(police_grande), "%.0f %%", h);
       }
 
       // Ventilateur : 3 pales qui tournent d'autant plus vite que la vitesse est haute.
       static float angle = 0;
       angle += v * 0.6f;                 // 60° par image à 100 %, rien à 0 %
       if (angle >= 360.0f) angle -= 360.0f;
-      const int cx = 8, cy = 56, r = 6;
+      const int cx = 9, cy = 54, r = 8;
       for (int i = 0; i < 3; i++) {
         const float a = (angle + i * 120.0f) * 3.14159f / 180.0f;
         it.filled_triangle(cx, cy,
-                           cx + (int) (r * cosf(a - 0.5f)), cy + (int) (r * sinf(a - 0.5f)),
-                           cx + (int) (r * cosf(a + 0.5f)), cy + (int) (r * sinf(a + 0.5f)));
+                           cx + (int) (r * cosf(a - 0.45f)), cy + (int) (r * sinf(a - 0.45f)),
+                           cx + (int) (r * cosf(a + 0.45f)), cy + (int) (r * sinf(a + 0.45f)));
       }
       it.circle(cx, cy, r + 1);
-      it.printf(20, 49, id(police_moyenne), "%.0f %%", v);
+      it.printf(22, 47, id(police_moyenne), "%.0f %%", v);
 
       // Séparation des deux colonnes
       it.line(70, 0, 70, 63);
 
-      // ---------------- Page 1 : colonne droite ----------------
+      // ---------------- Colonne droite ----------------
+      const bool critique = id(alerte_critique).state;
       if (critique && (millis() / 700) % 2 == 0) {
         // Panneau « attention » : grand triangle avec un point d'exclamation.
         it.filled_triangle(99, 2, 73, 60, 125, 60);
@@ -678,21 +479,20 @@ display:
       // Affiche OK, ou une étiquette en négatif avec une flèche vers le haut ou le bas.
       auto etat = [&](int y, int niveau, const char *bas, const char *haut) {
         if (niveau == 0) {
-          it.print(99, y + 1, id(police_moyenne), TextAlign::TOP_CENTER, "OK");
+          it.print(99, y, id(police_moyenne), TextAlign::TOP_CENTER, "OK");
           return;
         }
-        it.filled_rectangle(73, y, 55, 15);
-        if (niveau > 0) it.filled_triangle(79, y + 3, 75, y + 11, 83, y + 11, COLOR_OFF);
-        else            it.filled_triangle(75, y + 3, 83, y + 3, 79, y + 11, COLOR_OFF);
-        it.print(106, y + 2, id(police_petite), COLOR_OFF, TextAlign::TOP_CENTER,
+        it.filled_rectangle(73, y - 1, 55, 17);
+        if (niveau > 0) it.filled_triangle(79, y + 2, 75, y + 11, 83, y + 11, COLOR_OFF);
+        else            it.filled_triangle(75, y + 3, 83, y + 3, 79, y + 12, COLOR_OFF);
+        it.print(106, y + 1, id(police_petite), COLOR_OFF, TextAlign::TOP_CENTER,
                  niveau > 0 ? haut : bas);
       };
 
-      if (!isnan(t))  etat(0,  t  < ${temp_min} ? -1 : (t  > ${temp_max} ? 1 : 0), "FROID", "CHAUD");
-      if (!isnan(h))  etat(16, h  < ${hum_min}  ? -1 : (h  > ${hum_max}  ? 1 : 0), "SEC", "HUMIDE");
-      if (!isnan(vp)) etat(32, vp < ${vpd_min}  ? -1 : (vp > ${vpd_max}  ? 1 : 0), "SATURE", "SEC");
+      if (!isnan(t)) etat(2, t < ${temp_min} ? -1 : (t > ${temp_max} ? 1 : 0), "FROID", "CHAUD");
+      if (!isnan(h)) etat(23, h < ${hum_min} ? -1 : (h > ${hum_max} ? 1 : 0), "SEC", "HUMIDE");
 
       const char *mode = "AUTO";
       if (id(mode_manuel).state) mode = "MANUEL";
       else if (id(renouv_restant) > 0) mode = "RENOUV.";
-      it.print(99, 51, id(police_petite), TextAlign::TOP_CENTER, mode);
+      it.print(99, 48, id(police_petite), TextAlign::TOP_CENTER, mode);

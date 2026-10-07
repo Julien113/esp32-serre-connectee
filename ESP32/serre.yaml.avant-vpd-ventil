@@ -14,9 +14,6 @@ substitutions:
   # base jusqu'à 100 % sur cette plage (en °C et en points d'humidité).
   rampe_temp: "3.0"
   rampe_hum: "10.0"
-  # Sous vpd_min, le ventilateur atteint 100 % quand le VPD est plus bas
-  # que vpd_min de cette valeur (kPa).
-  rampe_vpd: "0.3"
   # Vitesse de secours si le capteur ne répond plus (%).
   vitesse_secours: "50.0"
   # Les plages de température et d'humidité sont dans plages.yaml.
@@ -529,11 +526,7 @@ script:
             // Montée progressive au-dessus des seuils.
             const float dt = (t - ${temp_max}) / ${rampe_temp};
             const float dh = (h - ${hum_max}) / ${rampe_hum};
-            // VPD trop bas (air saturé) : on fait entrer l'air plus sec de la pièce.
-            // Pas d'action si le VPD est trop haut : ventiler assècherait encore.
-            const float vp = id(vpd).state;
-            const float dv = isnan(vp) ? 0.0f : (${vpd_min} - vp) / ${rampe_vpd};
-            const float exces = std::max(dt, std::max(dh, dv));
+            const float exces = std::max(dt, dh);
             if (exces > 0) v = base + (100.0f - base) * std::min(1.0f, exces);
             if (id(renouv_restant) > 0) v = 100.0f;
           }

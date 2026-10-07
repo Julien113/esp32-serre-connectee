@@ -1,0 +1,32 @@
+# =============================================================================
+#  Plages de la serre : c'est ici que tu règles tes valeurs.
+#  Après une modification, relance  esphome run serre.yaml  pour les appliquer.
+# =============================================================================
+substitutions:
+  # --- Plage souhaitée : l'écran affiche OK entre ces deux valeurs ---------
+  # Au-dessus du maximum, le ventilateur accélère.
+  temp_min: "22.0"        # °C
+  temp_max: "28.0"        # °C
+  hum_min: "60.0"         # %
+  hum_max: "80.0"         # %
+  vpd_min: "0.5"          # kPa : en dessous, air trop saturé (moisissure)
+  vpd_max: "1.2"          # kPa : au-dessus, air trop sec pour les plantes
+
+  # --- Plage critique : au-delà, panneau « attention » sur l'écran ---------
+  # et entité « Alerte critique » activée (pour les notifications plus tard).
+  temp_critique_min: "15.0"   # °C
+  temp_critique_max: "32.0"   # °C
+  hum_critique_min: "40.0"    # %
+  hum_critique_max: "95.0"    # %
+
+  # --- Tendances (2e page de l'écran) -------------------------------------
+  # Écart minimal sur 30 min pour afficher « hausse » ou « baisse » ;
+  # en dessous, la valeur est considérée stable (bruit du capteur).
+  tendance_temp: "0.3"    # °C
+  tendance_hum: "2.0"     # %
+  tendance_vpd: "0.05"    # kPa
+
+  # --- Veille de l'écran (contre l'usure de l'OLED) ------------------------
+  # Heures décimales : 7.5 = 7 h 30. L'écran se rallume en cas d'alerte critique.
+  ecran_veille_debut: "0.0"
+  ecran_veille_fin: "7.5"
