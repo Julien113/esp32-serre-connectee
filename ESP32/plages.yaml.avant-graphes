@@ -26,18 +26,6 @@ substitutions:
   tendance_hum: "2.0"     # %
   tendance_vpd: "0.05"    # kPa
 
-  # --- Écrans affichés ------------------------------------------------------
-  # Liste ordonnée, séparée par des virgules. Retire un nom pour masquer cet écran.
-  #   temps_reel     valeurs actuelles et états
-  #   moyennes       moyennes sur 24 h et tendances sur 30 min
-  #   graphe_temp    courbe de température avec min et max
-  #   graphe_hum     courbe d'humidité avec min et max
-  #   graphe_vpd     courbe du VPD avec min et max
-  #   graphe_ventil  courbe de la vitesse du ventilateur (%) avec min et max
-  ecrans: "temps_reel, moyennes, graphe_temp, graphe_hum, graphe_vpd, graphe_ventil"
-  ecran_duree: "15"       # secondes d'affichage de chaque écran
-  graphe_duree: "6"       # heures couvertes par les graphiques (repart à zéro au redémarrage)
-
   # --- Veille de l'écran (contre l'usure de l'OLED) ------------------------
   # Heures décimales : 7.5 = 7 h 30. L'écran se rallume en cas d'alerte critique.
   ecran_veille_debut: "0.0"

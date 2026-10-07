@@ -453,43 +453,8 @@ globals:
   - id: renouv_restant          # minutes de renouvellement restantes
     type: int
     initial_value: "0"
-  # Historique des graphiques (96 points, le plus récent à la fin).
-  # Gardé en mémoire vive : il repart de zéro après un redémarrage.
-  - id: histo_temp
-    type: std::vector<float>
-  - id: histo_hum
-    type: std::vector<float>
-  - id: histo_vpd
-    type: std::vector<float>
-  - id: histo_ventil
-    type: std::vector<float>
 
 interval:
-  # Toutes les 15 s : mesures pour les graphiques. Un point (moyenne des
-  # mesures) est ajouté tous les graphe_duree / 96, soit 3 min 45 pour 6 h.
-  - interval: 15s
-    then:
-      - lambda: |-
-          static float somme[4] = {0, 0, 0, 0};
-          static int nb[4] = {0, 0, 0, 0};
-          static int tours = 0;
-          const float valeurs[4] = {id(temperature).state, id(humidite).state,
-                                    id(vpd).state, id(vitesse_actuelle)};
-          for (int i = 0; i < 4; i++) {
-            if (!isnan(valeurs[i])) { somme[i] += valeurs[i]; nb[i]++; }
-          }
-          const int tours_par_point = std::max(1, (int) lroundf(${graphe_duree} * 3600.0f / 96.0f / 15.0f));
-          if (++tours < tours_par_point) return;
-          tours = 0;
-          std::vector<float> *histo[4] = {&id(histo_temp), &id(histo_hum),
-                                          &id(histo_vpd), &id(histo_ventil)};
-          for (int i = 0; i < 4; i++) {
-            histo[i]->push_back(nb[i] > 0 ? somme[i] / nb[i] : NAN);
-            if (histo[i]->size() > 96) histo[i]->erase(histo[i]->begin());
-            somme[i] = 0;
-            nb[i] = 0;
-          }
-
   # Toutes les 5 min : compare la valeur lissée à celle d'il y a 30 min.
   - interval: 5min
     then:
@@ -578,13 +543,10 @@ script:
           id(fan_pwm).set_level(v / 100.0f);
 
 # -----------------------------------------------------------------------------
-#  Écran OLED 1,3" (contrôleur SH1106, 128x64). Les écrans affichés, leur ordre
-#  et leur durée se choisissent dans plages.yaml (ecrans, ecran_duree) :
-#   temps_reel    : température, humidité, VPD, ventilateur | états et mode
-#   moyennes      : moyennes sur 24 h et tendances sur 30 min
-#   graphe_temp, graphe_hum, graphe_vpd, graphe_ventil : courbe sur graphe_duree
-#                   heures avec le minimum et le maximum de la période
-#   Alerte critique : reste sur temps_reel, la colonne droite clignote avec ⚠
+#  Écran OLED 1,3" (contrôleur SH1106, 128x64), deux pages qui alternent toutes les 15 s
+#   Page 1 : température, humidité, VPD, ventilateur | états et mode
+#   Page 2 : moyennes sur 24 h et tendances sur 30 min (température, humidité, VPD)
+#   Alerte critique : reste sur la page 1, la colonne droite clignote avec ⚠
 #   Veille : écran noir pendant les heures définies dans plages.yaml
 # -----------------------------------------------------------------------------
 font:
@@ -645,90 +607,9 @@ display:
         }
       };
 
-      // ---------------- Choix de l'écran (liste « ecrans » de plages.yaml) ----------------
-      // 0 temps_reel, 1 moyennes, 2 graphe_temp, 3 graphe_hum, 4 graphe_vpd, 5 graphe_ventil
-      static std::vector<int> ecrans;
-      if (ecrans.empty()) {
-        const char *noms[] = {"temps_reel", "moyennes", "graphe_temp", "graphe_hum",
-                              "graphe_vpd", "graphe_ventil"};
-        std::string liste = "${ecrans}";
-        size_t debut = 0;
-        while (debut <= liste.size()) {
-          size_t fin = liste.find(',', debut);
-          if (fin == std::string::npos) fin = liste.size();
-          std::string nom = liste.substr(debut, fin - debut);
-          const size_t a = nom.find_first_not_of(" \t");
-          const size_t b = nom.find_last_not_of(" \t");
-          nom = (a == std::string::npos) ? "" : nom.substr(a, b - a + 1);
-          if (!nom.empty()) {
-            int trouve = -1;
-            for (int i = 0; i < 6; i++) if (nom == noms[i]) trouve = i;
-            if (trouve >= 0) ecrans.push_back(trouve);
-            else ESP_LOGW("ecran", "Écran inconnu dans plages.yaml : %s", nom.c_str());
-          }
-          debut = fin + 1;
-        }
-        if (ecrans.empty()) ecrans.push_back(0);
-      }
-      int ecran = ecrans[(millis() / (${ecran_duree} * 1000UL)) % ecrans.size()];
-      if (critique) ecran = 0;
-
-      // ---------------- Graphiques ----------------
-      // Courbe à droite (96 points, le plus récent au bord droit), maximum en
-      // haut et minimum en bas de la colonne de gauche.
-      auto graphe = [&](const char *titre, const std::vector<float> &donnees,
-                        const char *format, float actuel, float ecart_mini) {
-        const int gauche = 31, haut = 14, bas = 62;
-        it.printf(0, 0, id(police_petite), "%s %g h", titre, (double) ${graphe_duree});
-        if (!isnan(actuel)) it.printf(127, 0, id(police_petite), TextAlign::TOP_RIGHT, format, actuel);
-        it.line(gauche - 1, haut, gauche - 1, 63);
-        it.line(gauche - 1, 63, 127, 63);
-
-        float mini = NAN, maxi = NAN;
-        int valides = 0;
-        for (float x : donnees) {
-          if (isnan(x)) continue;
-          if (valides == 0 || x < mini) mini = x;
-          if (valides == 0 || x > maxi) maxi = x;
-          valides++;
-        }
-        if (valides < 2) {
-          it.print(79, 38, id(police_petite), TextAlign::CENTER, "Mesures...");
-          return;
-        }
-        it.printf(gauche - 3, haut - 1, id(police_petite), TextAlign::TOP_RIGHT, format, maxi);
-        it.printf(gauche - 3, 63, id(police_petite), TextAlign::BOTTOM_RIGHT, format, mini);
-
-        // Échelle verticale, élargie si la courbe est presque plate.
-        float bas_echelle = mini, haut_echelle = maxi;
-        if (haut_echelle - bas_echelle < ecart_mini) {
-          const float milieu = (haut_echelle + bas_echelle) / 2;
-          bas_echelle = milieu - ecart_mini / 2;
-          haut_echelle = milieu + ecart_mini / 2;
-        }
-        const int n = donnees.size();
-        int px = -1, py = 0;
-        for (int i = 0; i < n; i++) {
-          if (isnan(donnees[i])) { px = -1; continue; }
-          const int x = 127 - (n - 1 - i);
-          const int y = bas - (int) lroundf((donnees[i] - bas_echelle) / (haut_echelle - bas_echelle) * (bas - haut));
-          if (px < 0) it.draw_pixel_at(x, y);
-          else        it.line(px, py, x, y);
-          px = x;
-          py = y;
-        }
-      };
-
-      switch (ecran) {
-        case 2: graphe("Temp.", id(histo_temp), "%.1f", t, 1.0f); return;
-        case 3: graphe("Humid.", id(histo_hum), "%.0f", h, 5.0f); return;
-        case 4: graphe("VPD", id(histo_vpd), "%.2f", id(vpd).state, 0.1f); return;
-        case 5: graphe("Ventil.", id(histo_ventil), "%.0f", v, 10.0f); return;
-        default: break;
-      }
-
-      // ---------------- Moyennes et tendances ----------------
-      if (ecran == 1) {
+      // ---------------- Page 2 (une fois sur deux, toutes les 15 s) ----------------
+      const bool page2 = !critique && (millis() / 15000) % 2 == 1;
+      if (page2) {
         it.print(0, 0, id(police_petite), "Moy. 24 h");
         it.print(127, 0, id(police_petite), TextAlign::TOP_RIGHT, "Tendance");
         it.line(0, 13, 127, 13);
