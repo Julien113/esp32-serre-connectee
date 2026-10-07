@@ -1,0 +1,13 @@
+# Noctua NF-R8 redux-1800 (3 fils, sans fil PWM)
+#  - GPIO25 commande un MOSFET qui hache le 12 V côté masse (fil noir)
+#  - le tachymètre n'est pas lu : il devient faux quand la masse est hachée
+# Basse fréquence volontaire : l'électronique du ventilateur supporte mal un
+# hachage rapide. Si un léger tic-tic est audible, augmenter min_power.
+
+output:
+  - platform: ledc
+    id: fan_pwm
+    pin: GPIO25
+    frequency: 50 Hz
+    min_power: 0.40          # en dessous, le ventilateur risque de caler
+    zero_means_zero: true    # 0 % = vraiment arrêté

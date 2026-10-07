@@ -1,0 +1,26 @@
+# Noctua NF-R8 redux-1800 PWM (4 fils)
+#  - fil bleu (PWM) piloté par GPIO25 via un transistor NPN : signal inversé
+#  - fil vert (tachymètre) lu sur GPIO27 : affiche le régime réel
+# Note : à 0 % de PWM, un Noctua ne s'arrête pas, il tourne à son régime minimum.
+
+output:
+  - platform: ledc
+    id: fan_pwm
+    pin: GPIO25
+    frequency: 25000 Hz      # fréquence standard des ventilateurs PWM
+    inverted: true           # le transistor inverse le signal
+
+sensor:
+  - platform: pulse_counter
+    name: Régime ventilateur
+    icon: mdi:fan
+    pin:
+      number: GPIO27
+      mode:
+        input: true
+        pullup: true         # en plus de la résistance de 10 kΩ vers 3,3 V
+    unit_of_measurement: tr/min
+    accuracy_decimals: 0
+    update_interval: 15s
+    filters:
+      - multiply: 0.5        # 2 impulsions par tour
