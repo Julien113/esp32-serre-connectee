@@ -45,6 +45,7 @@ Les écrans défilent dans l'ordre de la liste `ecrans` de `plages.yaml`, chacun
 - **temps_reel** : à gauche la température, l'humidité, l'icône du ventilateur qui tourne plus ou moins vite et sa vitesse en %. À droite l'état de la température, de l'humidité et le mode du ventilateur (AUTO, RENOUV., MANUEL).
 - **moyennes** : moyennes sur 24 h de la température, de l'humidité et du VPD, avec la tendance sur 30 min (hausse, baisse ou stable). Les seuils de « stable » sont dans `plages.yaml`.
 - **graphe_temp**, **graphe_hum**, **graphe_vpd**, **graphe_ventil** : courbe sur les dernières `graphe_duree` heures (6 par défaut, 96 points). En haut la valeur actuelle, à gauche le maximum (en haut) et le minimum (en bas) de la période. L'historique est en mémoire : il repart de zéro après un redémarrage, le premier tracé apparaît au bout de 2 points (environ 8 min pour 6 h).
+- **Bouton BOOT** de la carte : appui court pour passer à l'écran suivant, appui long (1 s) pour mettre en pause ou relancer le défilement. En pause, deux petites barres s'affichent en bas à droite. Ne pas le tenir appuyé en branchant l'ESP32 : il passerait en mode flash.
 - **Alerte critique** : l'écran reste sur temps_reel et la colonne droite clignote avec un panneau attention.
 - **Veille** : écran éteint de minuit à 7 h 30 (réglable dans `plages.yaml`), sauf en cas d'alerte critique.
 

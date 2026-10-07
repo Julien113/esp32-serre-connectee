@@ -332,6 +332,37 @@ binary_sensor:
   - platform: status
     name: Connectée
 
+  # Bouton BOOT de la carte (GPIO0, aucun câblage) :
+  #   appui court -> écran suivant
+  #   appui long (1 s et plus) -> pause / reprise du défilement des écrans
+  # Rappel : appuyé pendant la mise sous tension, il fait passer l'ESP32 en mode flash.
+  - platform: gpio
+    id: bouton_boot
+    internal: true
+    pin:
+      number: GPIO0
+      inverted: true
+      ignore_strapping_warning: true
+      mode:
+        input: true
+        pullup: true
+    filters:
+      - delayed_on_off: 20ms   # anti-rebond
+    on_multi_click:
+      - timing:
+          - ON for at most 0.8s
+          - OFF for at least 0.05s
+        then:
+          - lambda: |-
+              id(ecran_position)++;
+              id(ecran_dernier_changement) = millis();
+      - timing:
+          - ON for at least 1s
+        then:
+          - lambda: |-
+              id(ecran_pause) = !id(ecran_pause);
+              id(ecran_dernier_changement) = millis();
+
   - platform: template
     name: Renouvellement en cours
     icon: mdi:weather-windy
@@ -463,6 +494,16 @@ globals:
     type: std::vector<float>
   - id: histo_ventil
     type: std::vector<float>
+  # Défilement des écrans (bouton BOOT)
+  - id: ecran_position          # rang dans la liste « ecrans »
+    type: int
+    initial_value: "0"
+  - id: ecran_dernier_changement
+    type: uint32_t
+    initial_value: "0"
+  - id: ecran_pause             # true : le défilement est arrêté
+    type: bool
+    initial_value: "false"
 
 interval:
   # Toutes les 15 s : mesures pour les graphiques. Un point (moyenne des
@@ -670,8 +711,19 @@ display:
         }
         if (ecrans.empty()) ecrans.push_back(0);
       }
-      int ecran = ecrans[(millis() / (${ecran_duree} * 1000UL)) % ecrans.size()];
+      if (!id(ecran_pause) && millis() - id(ecran_dernier_changement) >= ${ecran_duree} * 1000UL) {
+        id(ecran_position)++;
+        id(ecran_dernier_changement) = millis();
+      }
+      if (id(ecran_position) >= (int) ecrans.size()) id(ecran_position) = 0;
+      int ecran = ecrans[id(ecran_position)];
       if (critique) ecran = 0;
+
+      // Défilement en pause : deux petites barres en bas à droite.
+      if (id(ecran_pause) && !critique) {
+        it.filled_rectangle(121, 57, 2, 7);
+        it.filled_rectangle(125, 57, 2, 7);
+      }
 
       // ---------------- Graphiques ----------------
       // Courbe à droite (96 points, le plus récent au bord droit), maximum en
