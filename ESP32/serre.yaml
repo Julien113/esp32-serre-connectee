@@ -37,8 +37,8 @@ esp32:
 #  3 fils (NF-R8 redux-1800)     : vitesse réglée en hachant l'alimentation
 packages:
   plages: !include plages.yaml     # plages souhaitées et critiques
-  # ventilateur: !include materiel/ventilateur_4fils.yaml
-  ventilateur: !include materiel/ventilateur_3fils.yaml
+  ventilateur: !include materiel/ventilateur_4fils.yaml
+  # ventilateur: !include materiel/ventilateur_3fils.yaml
 
 logger:
 
